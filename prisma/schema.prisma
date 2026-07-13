@@ -1,0 +1,207 @@
+generator client {
+  provider     = "prisma-client-js"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  PLAYER
+}
+
+enum TournamentStatus {
+  UPCOMING
+  ONGOING
+  FINISHED
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
+enum InvitationStatus {
+  PENDING
+  USED
+  REVOKED
+  EXPIRED
+}
+
+model User {
+  id           String  @id @default(uuid())
+  email        String  @unique
+  passwordHash String?
+  firstName    String?
+  lastName     String?
+
+  role      UserRole   @default(PLAYER)
+  createdAt DateTime   @default(now())
+  status    UserStatus @default(PENDING)
+
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
+  bets         Bet[]
+  tournaments  TournamentParticipant[]
+  outrightBets OutrightBet[]
+}
+
+model Invitation {
+  id     String           @id @default(uuid())
+  email  String
+  token  String           @unique
+  status InvitationStatus @default(PENDING)
+
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+  @@index([status])
+}
+
+model Tournament {
+  id        String           @id @default(uuid())
+  name      String
+  apiCode   String           @unique
+  status    TournamentStatus @default(UPCOMING)
+  createdAt DateTime         @default(now())
+
+  matches      Match[]
+  participants TournamentParticipant[]
+  outrightBets OutrightBet[]
+  standings    Standing[]
+  topScorers   TopScorer[]
+}
+
+model TournamentParticipant {
+  id           String   @id @default(uuid())
+  tournamentId String
+  userId       String
+  joinedAt     DateTime @default(now())
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@index([userId])
+  @@index([tournamentId])
+}
+
+model Match {
+  id           String      @id @default(uuid())
+  tournamentId String
+  apiMatchId   String      @unique
+  homeTeam     String?
+  awayTeam     String?
+  homeTeamLogo String?
+  awayTeamLogo String?
+  startTime    DateTime
+  status       MatchStatus @default(SCHEDULED)
+  homeScore    Int?
+  awayScore    Int?
+  stage        String
+  group        String?
+  matchday     Int?
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  bets       Bet[]
+
+  @@index([tournamentId])
+}
+
+model Bet {
+  id           String   @id @default(uuid())
+  userId       String
+  matchId      String
+  homeScore    Int
+  awayScore    Int
+  pointsEarned Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match Match @relation(fields: [matchId], references: [apiMatchId], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([matchId])
+}
+
+model OutrightBet {
+  id           String @id @default(uuid())
+  userId       String
+  tournamentId String
+
+  // Прогнози користувача (текстові поля)
+  topScorer   String? // Кращий бомбардир (напр. "Kylian Mbappé")
+  firstPlace  String? // 1 місце (напр. "France")
+  secondPlace String? // 2 місце (напр. "Argentina")
+  thirdPlace  String? // 3 місце (напр. "England")
+
+  // Нараховані бали за кожну категорію (заповнює адмін наприкінці турніру)
+  topScorerPoints Int @default(0)
+  podiumPoints    Int @default(0) // Сумарно за вгадані місця в топ-3
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  // Обмеження: один користувач робить ОДИН пакет предтурнірних ставок на ОДИН турнір
+  @@unique([userId, tournamentId])
+  @@index([userId])
+  @@index([tournamentId])
+}
+
+model Standing {
+  id             String  @id @default(uuid())
+  tournamentId   String
+  position       Int // Місце в таблиці (1, 2, 3...)
+  apiTeamId      Int // ID команди з зовнішнього API (для ідентифікації)
+  teamName       String // Назва команди (напр. "Ajax")
+  teamCrest      String? // Логотип команди
+  playedGames    Int // Зіграно матчів
+  won            Int // Перемоги
+  draw           Int // Нічиї
+  lost           Int // Поразки
+  points         Int // Очки
+  goalsFor       Int // Забиті голи
+  goalsAgainst   Int // Пропущені голи
+  goalDifference Int // Різниця голів
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  // Обмеження: у конкретному турнірі команда може мати лише один рядок в таблиці
+  @@unique([tournamentId, apiTeamId])
+  @@index([tournamentId])
+}
+
+model TopScorer {
+  id           String  @id @default(uuid())
+  tournamentId String
+  apiPlayerId  Int // ID гравця з API
+  playerName   String // Ім'я гравця (напр. "Lautaro Martínez")
+  teamName     String // Назва команди, за яку грає
+  teamCrest    String? // Логотип команди
+  goals        Int // Кількість голів
+  assists      Int?    @default(0) // Асисти (якщо є в API)
+  penalties    Int?    @default(0) // Голи з пенальті
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  // Обмеження: один гравець — один рядок у списку бомбардирів цього турніру
+  @@unique([tournamentId, apiPlayerId])
+  @@index([tournamentId])
+}
