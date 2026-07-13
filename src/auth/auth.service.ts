@@ -91,6 +91,16 @@ export class AuthService {
         lastName: dto.lastName,
         status: UserStatus.ACTIVE,
       },
+      include: {
+        tournaments: {
+          orderBy: {
+            tournament: {
+              createdAt: 'desc',
+            },
+          },
+          take: 1,
+        },
+      },
     });
 
     await this.prisma.invitation.update({
@@ -102,6 +112,7 @@ export class AuthService {
 
     return {
       token,
+      lastTournamentId: user.tournaments[0].tournamentId || null,
       user: {
         email: user.email,
         id: user.id,
@@ -184,21 +195,32 @@ export class AuthService {
       });
     }
 
-    await this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id: user.id },
       data: { failedLoginAttempts: 0, lockedUntil: null },
+      include: {
+        tournaments: {
+          orderBy: {
+            tournament: {
+              createdAt: 'desc',
+            },
+          },
+          take: 1,
+        },
+      },
     });
 
     const token = await this.generateToken(user);
 
     return {
       token,
+      lastTournamentId: updatedUser.tournaments[0].tournamentId || null,
       user: {
-        email: user.email,
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
+        email: updatedUser.email,
+        id: updatedUser.id,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        role: updatedUser.role,
       },
     };
   }
