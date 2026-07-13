@@ -22,7 +22,7 @@ export class MailService {
     await this.resend.emails.send({
       from: this.from,
       to: email,
-      subject: 'Запрошення',
+      subject: 'Invitation',
       html: InvitationTemplate(token),
     });
   }

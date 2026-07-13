@@ -3,10 +3,10 @@ import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { randomBytes } from 'crypto';
-import { UserRole, UserStatus } from '@prisma/client';
+import { UserStatus } from '@prisma/client';
 import { InviteUserDto } from './dto/invite-user';
 import { MailService } from 'src/integrations/mail/mail.service';
-import { AcceptInvitationDto } from './dto/accept-invitation-dto';
+import { RegisterDto } from './dto/register-dto';
 import { LoginUserDto } from './dto/login-user-dto';
 
 const MAX_ATTEMPTS = 5;
@@ -64,53 +64,7 @@ export class AuthService {
       });
   }
 
-   // async acceptInvite(dto: AcceptInviteDto) {
-  //   const invitation = await this.prisma.invitation.findUnique({
-  //     where: { token: dto.token },
-  //     include: { user: true }
-  //   });
-
-  //   if (!invitation || invitation.status !== 'PENDING') {
-  //     throw new BadRequestException('Invitation is invalid or has already been used');
-  //   }
-
-  //   if (invitation.expiresAt < new Date()) {
-  //     throw new BadRequestException('Invitation has expired');
-  //   }
-
-  //   const hashedPassword = await bcrypt.hash(dto.password, 10);
-
-  //   return this.prisma.$transaction(async (tx) => {
-  //     const user = await tx.user.update({
-  //       where: { id: invitation.userId },
-  //       data: {
-  //         password: hashedPassword,
-  //         status: 'ACTIVE',
-  //       },
-  //     });
-
-  //     await tx.invitation.update({
-  //       where: { id: invitation.id },
-  //       data: {
-  //         status: 'USED',
-  //         usedAt: new Date()
-  //       },
-  //     });
-
-  //     return {
-  //       id: user.id,
-  //       email: user.email,
-  //       firstName: user.firstName,
-  //       lastName: user.lastName,
-  //       role: user.role,
-  //       avatarUrl: user.avatarUrl,
-  //     };
-  //   });
-  // }
-
-  async acceptInvitation(dto: AcceptInvitationDto) {
-    console.log(dto)
-
+  async register(dto: RegisterDto) {
     const invitation = await this.prisma.invitation.findUnique({
       where: {
         token: dto.token,
@@ -118,13 +72,6 @@ export class AuthService {
         expiresAt: { gt: new Date() },
       },
     });
-
-    console.log('token', dto.token)
-
-     //   const invitation = await this.prisma.invitation.findUnique({
-  //     where: { token: dto.token },
-  //     include: { user: true }
-  //   });
 
     if (!invitation) {
       throw new BadRequestException('Invalid or expired token');
@@ -134,12 +81,14 @@ export class AuthService {
       throw new BadRequestException('Passwords are different!');
     }
 
-    const passwordHash = await this.hashPassword(dto.password)
+    const passwordHash = await this.hashPassword(dto.password);
 
-    await this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { email: invitation.email },
       data: {
         passwordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
         status: UserStatus.ACTIVE,
       },
     });
@@ -149,7 +98,18 @@ export class AuthService {
       data: { usedAt: new Date() },
     });
 
-    return { success: true };
+    const token = await this.generateToken(user);
+
+    return {
+      token,
+      user: {
+        email: user.email,
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+      },
+    };
   }
 
   async hashPassword(password: string): Promise<string> {
@@ -169,7 +129,7 @@ export class AuthService {
     );
   }
 
-async login({ email, password }: LoginUserDto) {
+  async login({ email, password }: LoginUserDto) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     const now = new Date();
     const fakePassword = '$2b$10$fakehashtofooltheattacker';
@@ -242,7 +202,6 @@ async login({ email, password }: LoginUserDto) {
       },
     };
   }
-
 
   // async register({
   //   email,
