@@ -5,15 +5,12 @@ export type GetTeamsResponse = {
     shortName: string;
     tla: string;
     crest: string;
-  }>;
-};
-
-export type GetTeamDetailsResponse = {
-  squad: Array<{
-    id: number;
-    name: string;
-    position: string;
-    dateOfBirth: string;
-    nationality: string;
+    squad: Array<{
+      id: number;
+      name: string;
+      position: string;
+      dateOfBirth: string;
+      nationality: string;
+    }>;
   }>;
 };

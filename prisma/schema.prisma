@@ -206,8 +206,8 @@ model Player {
   id               Int                @id
   name             String
   position         String
-  dateOfBirth      String
-  nationality      String
+  dateOfBirth      String?
+  nationality      String?
   teamId           Int
   team             Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
   bonusPredictions BonusPrediction[]

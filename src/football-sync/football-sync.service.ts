@@ -5,8 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { firstValueFrom } from 'rxjs';
 import { MatchStatus } from '@prisma/client';
-import { GetTeamDetailsResponse, GetTeamsResponse } from './types';
-import { delay } from 'src/utils';
+import { GetTeamsResponse } from './types';
 
 const BASE_URL = 'https://api.football-data.org/v4';
 
@@ -24,7 +23,7 @@ export class FootballSyncService {
     const { data } = await firstValueFrom(
       this.httpService.get<T>(`${BASE_URL}${url}`, {
         headers: {
-          'X-Auth-Token': process.env.FOOTBALL_DATA_API_KEY ?? '',
+          'X-Auth-Token': process.env.FOOTBALL_DATA_API_TOKEN ?? '',
         },
       }),
     );
@@ -160,7 +159,7 @@ export class FootballSyncService {
     this.logger.log(`⚽ Бомбардири для ${apiCode} оновлені.`);
   }
 
-  @Cron('*/1 * * * *')
+  @Cron('0 3 * * *')
   async syncTeamsAndPlayers() {
     this.logger.log('🚀 Starting teams and players synchronization...');
 
@@ -208,13 +207,7 @@ export class FootballSyncService {
             },
           });
 
-          await delay(20000);
-
-          const teamDetails = await this.callExternalFootballApi<GetTeamDetailsResponse>(
-            `/teams/${team.id}`,
-          );
-
-          for (const player of teamDetails.squad ?? []) {
+          for (const player of team.squad ?? []) {
             await this.prisma.player.upsert({
               where: {
                 id: player.id,
@@ -237,9 +230,7 @@ export class FootballSyncService {
             });
           }
 
-          this.logger.log(`Synced ${teamDetails.squad?.length ?? 0} players for ${team.name}`);
-
-          if (i < data.teams.length - 1) await delay(20000);
+          this.logger.log(`Synced ${team.squad?.length ?? 0} players for ${team.name}`);
         }
       } catch (error) {
         this.logger.error(`Failed to sync tournament ${tournament.name}`, error);
