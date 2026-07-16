@@ -160,7 +160,7 @@ export class FootballSyncService {
     this.logger.log(`⚽ Бомбардири для ${apiCode} оновлені.`);
   }
 
-  @Cron('*/120 * * * *')
+  @Cron('*/1 * * * *')
   async syncTeamsAndPlayers() {
     this.logger.log('🚀 Starting teams and players synchronization...');
 
@@ -208,7 +208,7 @@ export class FootballSyncService {
             },
           });
 
-          await delay(60000);
+          await delay(20000);
 
           const teamDetails = await this.callExternalFootballApi<GetTeamDetailsResponse>(
             `/teams/${team.id}`,
@@ -239,7 +239,7 @@ export class FootballSyncService {
 
           this.logger.log(`Synced ${teamDetails.squad?.length ?? 0} players for ${team.name}`);
 
-          if (i < data.teams.length - 1) await delay(60000);
+          if (i < data.teams.length - 1) await delay(20000);
         }
       } catch (error) {
         this.logger.error(`Failed to sync tournament ${tournament.name}`, error);
