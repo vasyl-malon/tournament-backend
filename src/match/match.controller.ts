@@ -47,4 +47,10 @@ export class MatchController {
   ) {
     return this.matchService.placeBet(userId, id, body);
   }
+
+  @Get('/teams')
+  @UseGuards(AuthGuard, JwtStrategy)
+  async getTeams(@Query('tournamentId') tournamentId: string) {
+    return this.matchService.placeBet2(tournamentId);
+  }
 }

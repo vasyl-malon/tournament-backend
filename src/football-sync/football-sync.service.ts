@@ -5,9 +5,10 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { firstValueFrom } from 'rxjs';
 import { MatchStatus } from '@prisma/client';
-import { mockData } from './mock-data';
+import { GetTeamDetailsResponse, GetTeamsResponse } from './types';
+import { delay } from 'src/utils';
 
-
+const BASE_URL = 'https://api.football-data.org/v4';
 
 @Injectable()
 export class FootballSyncService {
@@ -19,37 +20,33 @@ export class FootballSyncService {
     private readonly configService: ConfigService,
   ) {}
 
-private calculatePoints(
-  predHome: number, predAway: number,
-  actualHome: number, actualAway: number
-): number {
-  // 1. Точний результат -> 3 бали
-  // (наприклад: прогноз 2:1, факт 2:1)
-  if (predHome === actualHome && predAway === actualAway) {
-    return 3;
+  async callExternalFootballApi<T>(url: string) {
+    const { data } = await firstValueFrom(
+      this.httpService.get<T>(`${BASE_URL}${url}`, {
+        headers: {
+          'X-Auth-Token': process.env.FOOTBALL_DATA_API_KEY ?? '',
+        },
+      }),
+    );
+
+    return data;
   }
 
-  const predDiff = predHome - predAway;
-  const actualDiff = actualHome - actualAway;
+  private calculatePoints(
+    predHome: number,
+    predAway: number,
+    actualHome: number,
+    actualAway: number,
+  ): number {
+    const predDiff = predHome - predAway;
+    const actualDiff = actualHome - actualAway;
+    if (predHome === actualHome && predAway === actualAway) return 3;
+    if (predDiff === actualDiff) return 2;
+    if (Math.sign(predDiff) === Math.sign(actualDiff)) return 1;
 
-  // 2. Точна різниця або нічия -> 2 бали
-  // (наприклад: прогноз 2:1, факт 3:2 (різниця +1) або прогноз 1:1, факт 3:3 (нічия, різниця 0))
-  if (predDiff === actualDiff) {
-    return 2;
+    return 0;
   }
 
-  // 3. Просто вгадано результат / тенденцію -> 1 бал
-  // (наприклад: прогноз 2:0, факт 3:1 — обидва рази виграли господарі, але різниця й рахунок інші)
-  if (Math.sign(predDiff) === Math.sign(actualDiff)) {
-    return 1;
-  }
-
-  // 4. Повне мимо -> 0 балів
-  return 0;
-}
-
-
-  // Налаштування Крону: Запуск щоночі о 03:00 ночі
   // @Cron(CronExpression.EVERY_MINUTE)
   // async handleDailySync() {
   //   this.logger.log('🚀 Початок щоденної синхронізації ліг та бомбардирів...');
@@ -163,7 +160,94 @@ private calculatePoints(
     this.logger.log(`⚽ Бомбардири для ${apiCode} оновлені.`);
   }
 
-  @Cron('*/15 * * * *')
+  @Cron('*/120 * * * *')
+  async syncTeamsAndPlayers() {
+    this.logger.log('🚀 Starting teams and players synchronization...');
+
+    const tournaments = await this.prisma.tournament.findMany({
+      where: { status: 'UPCOMING' },
+    });
+
+    for (const tournament of tournaments) {
+      try {
+        this.logger.log(`Fetching teams for tournament: ${tournament.name}`);
+
+        const data = await this.callExternalFootballApi<GetTeamsResponse>(
+          `/competitions/${tournament.apiCode}/teams`,
+        );
+
+        for (let i = 0; i < data.teams.length; i++) {
+          const team = data.teams[i];
+
+          await this.prisma.team.upsert({
+            where: { id: team.id },
+            update: {
+              name: team.shortName,
+              code: team.tla,
+              logo: team.crest,
+            },
+            create: {
+              id: team.id,
+              name: team.shortName,
+              code: team.tla,
+              logo: team.crest,
+            },
+          });
+
+          await this.prisma.tournamentTeam.upsert({
+            where: {
+              tournamentId_teamId: {
+                tournamentId: tournament.id,
+                teamId: team.id,
+              },
+            },
+            update: {},
+            create: {
+              tournamentId: tournament.id,
+              teamId: team.id,
+            },
+          });
+
+          await delay(60000);
+
+          const teamDetails = await this.callExternalFootballApi<GetTeamDetailsResponse>(
+            `/teams/${team.id}`,
+          );
+
+          for (const player of teamDetails.squad ?? []) {
+            await this.prisma.player.upsert({
+              where: {
+                id: player.id,
+              },
+              update: {
+                name: player.name,
+                position: player.position ?? 'Unknown',
+                dateOfBirth: player.dateOfBirth,
+                nationality: player.nationality,
+                teamId: team.id,
+              },
+              create: {
+                id: player.id,
+                name: player.name,
+                position: player.position ?? 'Unknown',
+                dateOfBirth: player.dateOfBirth,
+                nationality: player.nationality,
+                teamId: team.id,
+              },
+            });
+          }
+
+          this.logger.log(`Synced ${teamDetails.squad?.length ?? 0} players for ${team.name}`);
+
+          if (i < data.teams.length - 1) await delay(60000);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to sync tournament ${tournament.name}`, error);
+      }
+    }
+  }
+
+  // @Cron('*/15 * * * *')
   async handleMatchSync() {
     this.logger.log('⚽ Початок синхронізації розкладу та результатів матчів...');
 
@@ -218,7 +302,9 @@ private calculatePoints(
           } else {
             // КЕЙС 2: Матч вже є в базі. Перевіряємо, чи він ШОЙНО ЗАВЕРШИВСЯ
             if (mappedStatus === 'FINISHED' && dbMatch.status !== 'FINISHED') {
-              this.logger.log(`🎯 Матч ${dbMatch.homeTeam} - ${dbMatch.awayTeam} завершився (${homeScore}:${awayScore}). Розраховуємо бали...`);
+              this.logger.log(
+                `🎯 Матч ${dbMatch.homeTeam} - ${dbMatch.awayTeam} завершився (${homeScore}:${awayScore}). Розраховуємо бали...`,
+              );
 
               const transactionOperations: any[] = [];
 
@@ -232,7 +318,7 @@ private calculatePoints(
                     awayScore,
                     startTime: new Date(m.utcDate),
                   },
-                })
+                }),
               );
 
               // Операція Б: Рахуємо бали для кожної ставки на цей матч
@@ -242,21 +328,20 @@ private calculatePoints(
                   bet.homeScore,
                   bet.awayScore,
                   homeScore ?? 0,
-                  awayScore ?? 0
+                  awayScore ?? 0,
                 );
 
                 transactionOperations.push(
                   this.prisma.bet.update({
                     where: { id: bet.id },
                     data: { pointsEarned: points },
-                  })
+                  }),
                 );
               }
 
               // Виконуємо все атомарно в транзакції
               await this.prisma.$transaction(transactionOperations);
               this.logger.log(`✅ Бали для матчу ID ${apiMatchId} успішно розподілено.`);
-
             } else {
               // КЕЙС 3: Звичайне оновлення (матч ще не почався, йде в лайві, або вже давно завершений)
               // Просто оновлюємо поточний рахунок/статус/час, ставки не чіпаємо

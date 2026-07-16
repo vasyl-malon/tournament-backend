@@ -202,4 +202,29 @@ export class MatchService {
       },
     });
   }
+
+  async placeBet2(tournamentId: string) {
+
+const relations = await this.prisma.tournamentTeam.findMany();
+
+  console.log('tournamentId:', tournamentId);
+
+
+console.log(relations);
+
+    const teams = await this.prisma.team.findMany({
+      where: {
+        tournaments: {
+          some: {
+            tournamentId,
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    return teams;
+  }
 }

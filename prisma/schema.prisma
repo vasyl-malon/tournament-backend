@@ -45,15 +45,15 @@ model User {
   lastName     String?
 
   role      UserRole   @default(PLAYER)
-  createdAt DateTime   @default(now())
   status    UserStatus @default(PENDING)
+  createdAt DateTime   @default(now())
 
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
 
-  bets         Bet[]
-  tournaments  TournamentParticipant[]
-  outrightBets OutrightBet[]
+  bets             Bet[]
+  tournaments      TournamentParticipant[]
+  bonusPredictions BonusPrediction[]
 }
 
 model Invitation {
@@ -78,11 +78,13 @@ model Tournament {
   status    TournamentStatus @default(UPCOMING)
   createdAt DateTime         @default(now())
 
-  matches      Match[]
-  participants TournamentParticipant[]
-  outrightBets OutrightBet[]
-  standings    Standing[]
-  topScorers   TopScorer[]
+  bonusPredictions BonusPrediction[]
+  matches          Match[]
+  participants     TournamentParticipant[]
+  standings        Standing[]
+  topScorers       TopScorer[]
+  teams            TournamentTeam[]
+  players          TournamentPlayer[]
 }
 
 model TournamentParticipant {
@@ -138,52 +140,24 @@ model Bet {
   @@index([matchId])
 }
 
-model OutrightBet {
-  id           String @id @default(uuid())
-  userId       String
-  tournamentId String
-
-  // Прогнози користувача (текстові поля)
-  topScorer   String? // Кращий бомбардир (напр. "Kylian Mbappé")
-  firstPlace  String? // 1 місце (напр. "France")
-  secondPlace String? // 2 місце (напр. "Argentina")
-  thirdPlace  String? // 3 місце (напр. "England")
-
-  // Нараховані бали за кожну категорію (заповнює адмін наприкінці турніру)
-  topScorerPoints Int @default(0)
-  podiumPoints    Int @default(0) // Сумарно за вгадані місця в топ-3
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-
-  // Обмеження: один користувач робить ОДИН пакет предтурнірних ставок на ОДИН турнір
-  @@unique([userId, tournamentId])
-  @@index([userId])
-  @@index([tournamentId])
-}
-
 model Standing {
   id             String  @id @default(uuid())
   tournamentId   String
-  position       Int // Місце в таблиці (1, 2, 3...)
-  apiTeamId      Int // ID команди з зовнішнього API (для ідентифікації)
-  teamName       String // Назва команди (напр. "Ajax")
-  teamCrest      String? // Логотип команди
-  playedGames    Int // Зіграно матчів
-  won            Int // Перемоги
-  draw           Int // Нічиї
-  lost           Int // Поразки
-  points         Int // Очки
-  goalsFor       Int // Забиті голи
-  goalsAgainst   Int // Пропущені голи
-  goalDifference Int // Різниця голів
+  position       Int
+  apiTeamId      Int
+  teamName       String
+  teamCrest      String?
+  playedGames    Int
+  won            Int
+  draw           Int
+  lost           Int
+  points         Int
+  goalsFor       Int
+  goalsAgainst   Int
+  goalDifference Int
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
-  // Обмеження: у конкретному турнірі команда може мати лише один рядок в таблиці
   @@unique([tournamentId, apiTeamId])
   @@index([tournamentId])
 }
@@ -191,17 +165,99 @@ model Standing {
 model TopScorer {
   id           String  @id @default(uuid())
   tournamentId String
-  apiPlayerId  Int // ID гравця з API
-  playerName   String // Ім'я гравця (напр. "Lautaro Martínez")
-  teamName     String // Назва команди, за яку грає
-  teamCrest    String? // Логотип команди
-  goals        Int // Кількість голів
-  assists      Int?    @default(0) // Асисти (якщо є в API)
-  penalties    Int?    @default(0) // Голи з пенальті
+  apiPlayerId  Int
+  playerName   String
+  teamName     String
+  teamCrest    String?
+  goals        Int
+  assists      Int?    @default(0)
+  penalties    Int?    @default(0)
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
-  // Обмеження: один гравець — один рядок у списку бомбардирів цього турніру
   @@unique([tournamentId, apiPlayerId])
   @@index([tournamentId])
+}
+
+enum PredictionType {
+  CHAMPION
+  RUNNER_UP
+  THIRD_PLACE
+  TOP_SCORER
+}
+
+enum PredictionStatus {
+  PENDING
+  CORRECT
+  INCORRECT
+}
+
+model Team {
+  id               Int               @id
+  name             String
+  code             String
+  logo             String
+  players          Player[]
+  bonusPredictions BonusPrediction[]
+  tournaments      TournamentTeam[]
+}
+
+model Player {
+  id               Int                @id
+  name             String
+  position         String
+  dateOfBirth      String
+  nationality      String
+  teamId           Int
+  team             Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  bonusPredictions BonusPrediction[]
+  players          TournamentPlayer[]
+}
+
+model BonusPrediction {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type         PredictionType
+  status       PredictionStatus @default(PENDING)
+  pointsWorth  Int              @default(10)
+  pointsEarned Int?
+
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  predictedTeamId Int?
+  predictedTeam   Team? @relation(fields: [predictedTeamId], references: [id], onDelete: SetNull)
+
+  predictedPlayerId Int?
+  predictedPlayer   Player? @relation(fields: [predictedPlayerId], references: [id], onDelete: SetNull)
+
+  predictionValue String
+  predictionLogo  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
+}
+
+model TournamentTeam {
+  tournamentId String
+  teamId       Int
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  team       Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([tournamentId, teamId])
+}
+
+model TournamentPlayer {
+  tournamentId String
+  playerId     Int
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id])
+  player     Player     @relation(fields: [playerId], references: [id])
+
+  @@id([tournamentId, playerId])
 }
