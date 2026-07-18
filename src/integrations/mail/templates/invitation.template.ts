@@ -1,5 +1,5 @@
 export const InvitationTemplate = (token: string) => {
-  const invitationUrl = `https://tournament-frontend-d48p.vercel.app/register?token=${token}`;
+  const invitationUrl = `https://predict-the-win.vercel.app/register?token=${token}`;
 
   return `
     <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 500px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);">
