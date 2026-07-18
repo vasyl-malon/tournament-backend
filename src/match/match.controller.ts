@@ -5,6 +5,7 @@ import { AuthGuard } from 'src/auth/auth.guard';
 import { JwtStrategy } from 'src/auth/auth.jwt.strategy';
 import { GetUser } from 'src/decorators/get-user.decorator';
 import { PlaceBetDto } from './dto/place-bet.dto';
+import { PlaceBonusPredictionsDto } from './dto/place-bonus-predictions-dto';
 
 @Controller('matches')
 export class MatchController {
@@ -48,9 +49,27 @@ export class MatchController {
     return this.matchService.placeBet(userId, id, body);
   }
 
+  @Post('/bonus')
+  @UseGuards(AuthGuard, JwtStrategy)
+  async predictBonus(@GetUser('id') userId: string, @Body() body: PlaceBonusPredictionsDto) {
+    return this.matchService.placeBonusPrediction(userId, body);
+  }
+
   @Get('/teams')
   @UseGuards(AuthGuard, JwtStrategy)
-  async getTeams(@Query('tournamentId') tournamentId: string) {
-    return this.matchService.placeBet2(tournamentId);
+  async getTeams(@Query('tournamentId') tournamentId: string, @Query('search') search: string) {
+    return this.matchService.getTeams(tournamentId, search);
+  }
+
+  @Get('/players')
+  @UseGuards(AuthGuard, JwtStrategy)
+  async getPlayers(@Query('tournamentId') tournamentId: string, @Query('search') search: string) {
+    return this.matchService.getPlayers(tournamentId, search);
+  }
+
+  @Get('/bonus')
+  @UseGuards(AuthGuard, JwtStrategy)
+  async getBonusPrediction(@GetUser('id') userId: string, @Query('tournamentId') tournamentId: string) {
+    return this.matchService.getUserBonusPrediction(userId, tournamentId);
   }
 }

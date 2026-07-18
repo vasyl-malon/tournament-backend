@@ -67,8 +67,7 @@ model Invitation {
   revokedAt DateTime?
   createdAt DateTime  @default(now())
 
-  @@index([email])
-  @@index([status])
+  @@index([email, status])
 }
 
 model Tournament {
@@ -77,6 +76,19 @@ model Tournament {
   apiCode   String           @unique
   status    TournamentStatus @default(UPCOMING)
   createdAt DateTime         @default(now())
+
+  championTeamWorth Int?
+  runnerUpTeamWorth Int?
+  topScorerWorth    Int?
+
+  championTeamId Int?
+  championTeam   Team? @relation("TournamentChampion", fields: [championTeamId], references: [id])
+
+  runnerUpTeamId Int?
+  runnerUpTeam   Team? @relation("TournamentRunnerUp", fields: [runnerUpTeamId], references: [id])
+
+  topScorerId Int?
+  topScorer   Player? @relation("TournamentTopScorer", fields: [topScorerId], references: [id])
 
   bonusPredictions BonusPrediction[]
   matches          Match[]
@@ -97,8 +109,7 @@ model TournamentParticipant {
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tournamentId, userId])
-  @@index([userId])
-  @@index([tournamentId])
+  @@index([userId, tournamentId])
 }
 
 model Match {
@@ -136,10 +147,88 @@ model Bet {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   match Match @relation(fields: [matchId], references: [apiMatchId], onDelete: Cascade)
 
-  @@index([userId])
-  @@index([matchId])
+  @@index([userId, matchId])
 }
 
+model Team {
+  id   Int    @id
+  name String
+  code String
+  logo String
+
+  players     Player[]
+  tournaments TournamentTeam[]
+
+  championPredictions BonusPrediction[] @relation("PredictionChampion")
+  runnerUpPredictions BonusPrediction[] @relation("PredictionRunnerUp")
+
+  championTournaments Tournament[] @relation("TournamentChampion")
+  runnerUpTournaments Tournament[] @relation("TournamentRunnerUp")
+}
+
+model Player {
+  id               Int                @id
+  name             String
+  position         String
+  dateOfBirth      String?
+  nationality      String?
+  teamId           Int
+  team             Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  bonusPredictions BonusPrediction[]
+  players          TournamentPlayer[]
+
+  topScorerTournaments Tournament[] @relation("TournamentTopScorer")
+}
+
+model BonusPrediction {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  championTeamId Int?
+  championTeam   Team? @relation("PredictionChampion", fields: [championTeamId], references: [id], onDelete: Cascade)
+
+  runnerUpTeamId Int?
+  runnerUpTeam   Team? @relation("PredictionRunnerUp", fields: [runnerUpTeamId], references: [id], onDelete: Cascade)
+
+  topScorerId Int?
+  topScorer   Player? @relation(fields: [topScorerId], references: [id], onDelete: Cascade)
+
+  championTeamPoints Int?
+  runnerUpTeamPoints Int?
+  topScorerPoints    Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, tournamentId])
+}
+
+model TournamentTeam {
+  tournamentId String
+  teamId       Int
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  team       Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([tournamentId, teamId])
+}
+
+model TournamentPlayer {
+  tournamentId String
+  playerId     Int
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id])
+  player     Player     @relation(fields: [playerId], references: [id])
+
+  @@id([tournamentId, playerId])
+}
+
+// TODO: implement later
 model Standing {
   id             String  @id @default(uuid())
   tournamentId   String
@@ -177,87 +266,4 @@ model TopScorer {
 
   @@unique([tournamentId, apiPlayerId])
   @@index([tournamentId])
-}
-
-enum PredictionType {
-  CHAMPION
-  RUNNER_UP
-  THIRD_PLACE
-  TOP_SCORER
-}
-
-enum PredictionStatus {
-  PENDING
-  CORRECT
-  INCORRECT
-}
-
-model Team {
-  id               Int               @id
-  name             String
-  code             String
-  logo             String
-  players          Player[]
-  bonusPredictions BonusPrediction[]
-  tournaments      TournamentTeam[]
-}
-
-model Player {
-  id               Int                @id
-  name             String
-  position         String
-  dateOfBirth      String?
-  nationality      String?
-  teamId           Int
-  team             Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  bonusPredictions BonusPrediction[]
-  players          TournamentPlayer[]
-}
-
-model BonusPrediction {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  type         PredictionType
-  status       PredictionStatus @default(PENDING)
-  pointsWorth  Int              @default(10)
-  pointsEarned Int?
-
-  tournamentId String
-  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-
-  predictedTeamId Int?
-  predictedTeam   Team? @relation(fields: [predictedTeamId], references: [id], onDelete: SetNull)
-
-  predictedPlayerId Int?
-  predictedPlayer   Player? @relation(fields: [predictedPlayerId], references: [id], onDelete: SetNull)
-
-  predictionValue String
-  predictionLogo  String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, type])
-}
-
-model TournamentTeam {
-  tournamentId String
-  teamId       Int
-
-  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  team       Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
-
-  @@id([tournamentId, teamId])
-}
-
-model TournamentPlayer {
-  tournamentId String
-  playerId     Int
-
-  tournament Tournament @relation(fields: [tournamentId], references: [id])
-  player     Player     @relation(fields: [playerId], references: [id])
-
-  @@id([tournamentId, playerId])
 }

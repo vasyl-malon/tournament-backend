@@ -159,7 +159,7 @@ export class FootballSyncService {
     this.logger.log(`⚽ Бомбардири для ${apiCode} оновлені.`);
   }
 
-  @Cron('0 3 * * *')
+@Cron('0 3 * * *')
   async syncTeamsAndPlayers() {
     this.logger.log('🚀 Starting teams and players synchronization...');
 
@@ -175,60 +175,73 @@ export class FootballSyncService {
           `/competitions/${tournament.apiCode}/teams`,
         );
 
-        for (let i = 0; i < data.teams.length; i++) {
-          const team = data.teams[i];
+        for (const team of data.teams) {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.team.upsert({
+              where: { id: team.id },
+              update: {
+                name: team.shortName,
+                code: team.tla,
+                logo: team.crest,
+              },
+              create: {
+                id: team.id,
+                name: team.shortName,
+                code: team.tla,
+                logo: team.crest,
+              },
+            });
 
-          await this.prisma.team.upsert({
-            where: { id: team.id },
-            update: {
-              name: team.shortName,
-              code: team.tla,
-              logo: team.crest,
-            },
-            create: {
-              id: team.id,
-              name: team.shortName,
-              code: team.tla,
-              logo: team.crest,
-            },
-          });
-
-          await this.prisma.tournamentTeam.upsert({
-            where: {
-              tournamentId_teamId: {
+            await tx.tournamentTeam.upsert({
+              where: {
+                tournamentId_teamId: {
+                  tournamentId: tournament.id,
+                  teamId: team.id,
+                },
+              },
+              update: {},
+              create: {
                 tournamentId: tournament.id,
                 teamId: team.id,
               },
-            },
-            update: {},
-            create: {
-              tournamentId: tournament.id,
-              teamId: team.id,
-            },
-          });
-
-          for (const player of team.squad ?? []) {
-            await this.prisma.player.upsert({
-              where: {
-                id: player.id,
-              },
-              update: {
-                name: player.name,
-                position: player.position ?? 'Unknown',
-                dateOfBirth: player.dateOfBirth,
-                nationality: player.nationality,
-                teamId: team.id,
-              },
-              create: {
-                id: player.id,
-                name: player.name,
-                position: player.position ?? 'Unknown',
-                dateOfBirth: player.dateOfBirth,
-                nationality: player.nationality,
-                teamId: team.id,
-              },
             });
-          }
+
+            const squad = team.squad ?? [];
+            if (squad.length === 0) return;
+
+            await Promise.all(
+              squad.map((player) =>
+                tx.player.upsert({
+                  where: { id: player.id },
+                  update: {
+                    name: player.name,
+                    position: player.position ?? 'Unknown',
+                    dateOfBirth: player.dateOfBirth,
+                    nationality: player.nationality,
+                    teamId: team.id,
+                  },
+                  create: {
+                    id: player.id,
+                    name: player.name,
+                    position: player.position ?? 'Unknown',
+                    dateOfBirth: player.dateOfBirth,
+                    nationality: player.nationality,
+                    teamId: team.id,
+                  },
+                })
+              )
+            );
+
+            const tournamentPlayerData = squad.map((player) => ({
+              tournamentId: tournament.id,
+              playerId: player.id,
+            }));
+
+            await tx.tournamentPlayer.createMany({
+              data: tournamentPlayerData,
+              skipDuplicates: true,
+            });
+          });
 
           this.logger.log(`Synced ${team.squad?.length ?? 0} players for ${team.name}`);
         }

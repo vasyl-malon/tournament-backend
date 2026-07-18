@@ -8,7 +8,6 @@ import { GetUser } from 'src/decorators/get-user.decorator';
 export class TournamentController {
   constructor(private readonly tournamentService: TournamentService) {}
 
-  // GET /tournaments/my?userId=...
   @Get('my')
   @UseGuards(AuthGuard, JwtStrategy)
   async getMyTournaments(@GetUser('id') userId: string) {
