@@ -153,6 +153,8 @@ export class MatchService {
       orderBy: { startTime: 'asc' },
       take: takeLimit,
       include: {
+        awayTeam: {},
+        homeTeam: {},
         bets: {
           where: { userId },
         },
@@ -220,7 +222,7 @@ export class MatchService {
   }
 
   async placeBet(userId: string, id: string, dto: PlaceBetDto) {
-    const { homeScore, awayScore } = dto;
+    const { homeScore, awayScore, predictedAdvancingTeamId } = dto;
 
     const match = await this.prisma.match.findUnique({
       where: { apiMatchId: id },
@@ -235,6 +237,14 @@ export class MatchService {
       throw new BadRequestException('FORBIDDEN');
     }
 
+    if (
+      predictedAdvancingTeamId &&
+      predictedAdvancingTeamId !== match.homeTeamId &&
+      predictedAdvancingTeamId !== match.awayTeamId
+    ) {
+      throw new BadRequestException('INVALID_ADVANCING_TEAM');
+    }
+
     const existingBet = await this.prisma.bet.findFirst({
       where: { userId, matchId: id },
     });
@@ -242,7 +252,11 @@ export class MatchService {
     if (existingBet) {
       return this.prisma.bet.update({
         where: { id: existingBet.id },
-        data: { homeScore, awayScore },
+        data: {
+          homeScore,
+          awayScore,
+          predictedAdvancingTeamId,
+        },
       });
     }
 
@@ -252,6 +266,7 @@ export class MatchService {
         matchId: id,
         homeScore,
         awayScore,
+        predictedAdvancingTeamId,
       },
     });
   }

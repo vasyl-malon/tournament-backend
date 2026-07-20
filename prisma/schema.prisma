@@ -76,6 +76,7 @@ model Tournament {
   apiCode   String           @unique
   status    TournamentStatus @default(UPCOMING)
   createdAt DateTime         @default(now())
+  emblem    String?
 
   championTeamWorth Int?
   runnerUpTeamWorth Int?
@@ -113,17 +114,21 @@ model TournamentParticipant {
 }
 
 model Match {
-  id           String      @id @default(uuid())
+  id           String @id @default(uuid())
   tournamentId String
-  apiMatchId   String      @unique
-  homeTeam     String?
-  awayTeam     String?
-  homeTeamLogo String?
-  awayTeamLogo String?
+  apiMatchId   String @unique
+
+  homeTeamId      Int?
+  awayTeamId      Int?
+  advancingTeamId Int?
+
   startTime    DateTime
   status       MatchStatus @default(SCHEDULED)
   homeScore    Int?
   awayScore    Int?
+  homeScorePen Int?
+  awayScorePen Int?
+  duration     String?
   stage        String
   group        String?
   matchday     Int?
@@ -131,18 +136,24 @@ model Match {
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   bets       Bet[]
 
+  homeTeam      Team? @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam      Team? @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  advancingTeam Team? @relation("AdvancingTeam", fields: [advancingTeamId], references: [id])
+
   @@index([tournamentId])
 }
 
 model Bet {
-  id           String   @id @default(uuid())
-  userId       String
-  matchId      String
-  homeScore    Int
-  awayScore    Int
-  pointsEarned Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                       String   @id @default(uuid())
+  userId                   String
+  matchId                  String
+  homeScore                Int
+  awayScore                Int
+  predictedAdvancingTeamId Int?
+  pointsEarned             Int      @default(0)
+  advancingPointsEarned    Int      @default(0)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   match Match @relation(fields: [matchId], references: [apiMatchId], onDelete: Cascade)
@@ -155,6 +166,10 @@ model Team {
   name String
   code String
   logo String
+
+  homeMatches      Match[] @relation("HomeTeam")
+  awayMatches      Match[] @relation("AwayTeam")
+  advancingMatches Match[] @relation("AdvancingTeam")
 
   players     Player[]
   tournaments TournamentTeam[]
