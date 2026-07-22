@@ -142,8 +142,8 @@ export class FootballSyncService {
     }
   }
 
-  @Cron('*/10 * * * *')
- async handleMatchSync() {
+  // @Cron('*/10 * * * *')
+  async handleMatchSync() {
     this.logger.log('Starting matches synchronization...');
 
     const tournaments = await this.prisma.tournament.findMany({
@@ -208,8 +208,6 @@ export class FootballSyncService {
               this.logger.log(
                 `Calculate points for the match ${m.homeTeam.shortName} - ${m.awayTeam.shortName} ...`,
               );
-
-              console.log('calculation')
 
               const transactionOperations: any[] = [];
 
@@ -469,7 +467,6 @@ export class FootballSyncService {
     const { data } = await firstValueFrom(
       this.httpService.get(url, { headers: { 'X-Auth-Token': apiKey } }),
     );
-    console.log('data: ', data);
 
     const scorers = data.scorers;
     if (!scorers || scorers.length === 0) return;
