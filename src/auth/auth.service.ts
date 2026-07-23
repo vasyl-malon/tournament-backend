@@ -68,7 +68,7 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
-    const invitation = await this.prisma.invitation.findUnique({
+    const invitation = await this.prisma.invitation.findFirst({
       where: {
         token: dto.token,
         usedAt: null,
@@ -86,35 +86,37 @@ export class AuthService {
 
     const passwordHash = await this.hashPassword(dto.password);
 
-    const user = await this.prisma.user.update({
-      where: { email: invitation.email },
-      data: {
-        passwordHash,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        status: UserStatus.ACTIVE,
-      },
-      include: {
-        tournaments: {
-          orderBy: {
-            tournament: {
-              createdAt: 'desc',
-            },
-          },
-          take: 1,
+    const { user, token: jwtToken } = await this.prisma.$transaction(async (tx) => {
+      const updatedUser = await tx.user.update({
+        where: { email: invitation.email },
+        data: {
+          passwordHash,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          status: UserStatus.ACTIVE,
         },
-      },
-    });
+        include: {
+          tournaments: {
+            orderBy: {
+              tournament: { createdAt: 'desc' },
+            },
+            take: 1,
+          },
+        },
+      });
 
-    await this.prisma.invitation.update({
-      where: { id: invitation.id },
-      data: { usedAt: new Date() },
-    });
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: { usedAt: new Date() },
+      });
 
-    const token = await this.generateToken(user);
+      const token = await this.generateToken(updatedUser);
+
+      return { user: updatedUser, token };
+    });
 
     return {
-      token,
+      token: jwtToken,
       lastTournamentId: user.tournaments.length ? user.tournaments[0].tournamentId : null,
       user: {
         email: user.email,
@@ -155,7 +157,6 @@ export class AuthService {
 
     if (!user) {
       await bcrypt.compare(password, fakePassword);
-
       throw new UnauthorizedException(AuthErrors.INVALID_CREDENTIALS);
     }
 
@@ -170,9 +171,7 @@ export class AuthService {
 
     if (!isPasswordValid) {
       const exceededLockTime = user.lockedUntil && user.lockedUntil <= now;
-
       const attempts = exceededLockTime ? 1 : user.failedLoginAttempts + 1;
-
       const isLocking = attempts >= MAX_LOGIN_ATTEMPTS;
 
       const lockedUntilDate = isLocking
@@ -182,9 +181,7 @@ export class AuthService {
           : user.lockedUntil;
 
       await this.prisma.user.update({
-        where: {
-          id: user.id,
-        },
+        where: { id: user.id },
         data: {
           failedLoginAttempts: attempts,
           lockedUntil: lockedUntilDate,
@@ -199,7 +196,6 @@ export class AuthService {
       }
 
       const attemptsLeft = MAX_LOGIN_ATTEMPTS - attempts;
-
       const showAttempts = attemptsLeft <= 3;
 
       throw new UnauthorizedException({
@@ -209,9 +205,7 @@ export class AuthService {
     }
 
     const updatedUser = await this.prisma.user.update({
-      where: {
-        id: user.id,
-      },
+      where: { id: user.id },
       data: {
         failedLoginAttempts: 0,
         lockedUntil: null,
@@ -219,9 +213,7 @@ export class AuthService {
       include: {
         tournaments: {
           orderBy: {
-            tournament: {
-              createdAt: 'desc',
-            },
+            tournament: { createdAt: 'desc' },
           },
           take: 1,
         },

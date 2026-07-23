@@ -21,7 +21,7 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
-  @Post('/invite-user')
+  @Post('/admin/invite-user')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async send(@Body() dto: InviteUserDto) {

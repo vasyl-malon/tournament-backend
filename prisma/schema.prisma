@@ -158,7 +158,7 @@ model Bet {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   match Match @relation(fields: [matchId], references: [apiMatchId], onDelete: Cascade)
 
-  @@index([userId, matchId])
+  @@unique([userId, matchId])
 }
 
 model Team {

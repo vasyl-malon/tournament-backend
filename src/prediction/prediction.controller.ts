@@ -2,8 +2,12 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { PredictionService } from './prediction.service';
 import { AuthGuard } from 'src/guards/auth.guard';
 import { GetUser } from 'src/decorators/get-user.decorator';
-import { PlaceBetDto } from './dto/place-bet.dto';
-import { PlaceBonusPredictionsDto } from './dto/place-bonus-predictions-dto';
+import {
+  GetBonusPredictionsQueryDto,
+  GetPredictionsQueryDto,
+} from './dto/get-predictions-query.dto';
+import { AddBonusPredictionDto } from './dto/add-bonus-prediction-dto';
+import { AddPredictionDto } from './dto/add-prediction.dto';
 
 @Controller('predictions')
 @UseGuards(AuthGuard)
@@ -11,33 +15,29 @@ export class PredictionController {
   constructor(private readonly predictionService: PredictionService) {}
 
   @Get()
-  async getBets(
-    @Query('userId') userId: string,
-    @Query('tournamentId') tournamentId: string,
-    @GetUser('id') requesterId: string,
+  async getPredictions(@Query() query: GetPredictionsQueryDto, @GetUser('id') requesterId: string) {
+    return this.predictionService.getPredictions(query.userId, query.tournamentId, requesterId);
+  }
+
+  @Get('/bonus')
+  async getBonusPredictions(
+    @GetUser('id') userId: string,
+    @Query() query: GetBonusPredictionsQueryDto,
   ) {
-    return this.predictionService.getBets(userId, tournamentId, requesterId);
+    return this.predictionService.getBonusPredictions(userId, query.tournamentId);
+  }
+
+  @Post('/bonus')
+  async addBonusPrediction(@GetUser('id') userId: string, @Body() body: AddBonusPredictionDto) {
+    return this.predictionService.addBonusPrediction(userId, body);
   }
 
   @Post('/:matchId')
-  async predictMatch(
+  async addPrediction(
     @GetUser('id') userId: string,
     @Param('matchId') matchId: string,
-    @Body() body: PlaceBetDto,
+    @Body() body: AddPredictionDto,
   ) {
-    return this.predictionService.placeBet(userId, matchId, body);
-  }
-
-  @Get('bonus')
-  async getBonusPrediction(
-    @GetUser('id') userId: string,
-    @Query('tournamentId') tournamentId: string,
-  ) {
-    return this.predictionService.getUserBonusPrediction(userId, tournamentId);
-  }
-
-  @Post('bonus')
-  async predictBonus(@GetUser('id') userId: string, @Body() body: PlaceBonusPredictionsDto) {
-    return this.predictionService.placeBonusPrediction(userId, body);
+    return this.predictionService.addPrediction(userId, matchId, body);
   }
 }

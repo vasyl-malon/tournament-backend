@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PredictionPoints } from './leaderboard.constants';
 import { TournamentStatus } from '@prisma/client';
@@ -7,7 +7,7 @@ import { TournamentStatus } from '@prisma/client';
 export class LeaderboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  public calculateUserStats(bets: { pointsEarned: number }[]) {
+  private calculateUserStats(bets: { pointsEarned: number }[]) {
     let totalPoints = 0;
     let exactCount = 0;
     let differenceCount = 0;
@@ -40,7 +40,11 @@ export class LeaderboardService {
       select: { status: true },
     });
 
-    const isTournamentFinished = tournament?.status === TournamentStatus.FINISHED;
+    if (!tournament) {
+      throw new NotFoundException(`Tournament with ID "${tournamentId}" not found`);
+    }
+
+    const isTournamentFinished = tournament.status === TournamentStatus.FINISHED;
 
     const participants = await this.prisma.user.findMany({
       where: {
@@ -76,12 +80,13 @@ export class LeaderboardService {
       const stats = this.calculateUserStats(player.bets);
 
       let bonusPoints = 0;
+      const bonus = player.bonusPredictions?.[0];
 
-      if (isTournamentFinished && player.bonusPredictions?.[0]) {
-        const bonus = player.bonusPredictions[0];
-        bonusPoints += bonus.championTeamPoints ?? 0;
-        bonusPoints += bonus.runnerUpTeamPoints ?? 0;
-        bonusPoints += bonus.topScorerPoints ?? 0;
+      if (isTournamentFinished && bonus) {
+        bonusPoints =
+          (bonus.championTeamPoints ?? 0) +
+          (bonus.runnerUpTeamPoints ?? 0) +
+          (bonus.topScorerPoints ?? 0);
       }
 
       return {
@@ -95,14 +100,14 @@ export class LeaderboardService {
       };
     });
 
-    const sortedLeaderboard = leaderboardWithoutRanks.sort((a, b) => {
+    const sortedLeaderboard = [...leaderboardWithoutRanks].sort((a, b) => {
       if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
       if (b.exactCount !== a.exactCount) return b.exactCount - a.exactCount;
       return b.differenceCount - a.differenceCount;
     });
 
     let currentRank = 1;
-    return sortedLeaderboard.map((player, index) => {
+    const rankedData = sortedLeaderboard.map((player, index) => {
       if (index > 0) {
         const prevPlayer = sortedLeaderboard[index - 1];
 
@@ -121,6 +126,10 @@ export class LeaderboardService {
         ...player,
       };
     });
+
+    return {
+      data: rankedData,
+    };
   }
 
   async getLeaderboard(tournamentId: string) {

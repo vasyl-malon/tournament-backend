@@ -6,21 +6,36 @@ import { RolesGuard } from 'src/guards';
 import { Roles } from 'src/decorators';
 import { UserRole } from '@prisma/client';
 import { AddParticipantDto } from './dto/add-participant-dto';
+import { CreateTournamentDto } from './dto/create-tournament-dto';
 
 @Controller('tournaments')
+@UseGuards(AuthGuard)
 export class TournamentController {
   constructor(private readonly tournamentService: TournamentService) {}
 
-  @Get('my')
-  @UseGuards(AuthGuard)
+  @Get('/my')
   async getMyTournaments(@GetUser('id') userId: string) {
     return this.tournamentService.getTournamentsForUser(userId);
   }
 
-  @Post('participants')
-  @UseGuards(AuthGuard, RolesGuard)
+  @Post()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async createTournament(@Body() dto: CreateTournamentDto) {
+    return this.tournamentService.createTournament(dto);
+  }
+
+  @Post('/participants')
+  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   async addParticipant(@Body() dto: AddParticipantDto) {
     return this.tournamentService.addParticipant(dto);
+  }
+
+  @Get('/admin/all')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async getAllTournamentsForAdmin() {
+    return this.tournamentService.getAllTournamentsForAdmin();
   }
 }

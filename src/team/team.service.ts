@@ -1,25 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { GetTeamsAndPlayersQueryDto } from './dto/get-teams-and-players-query.dto';
 
 @Injectable()
 export class TeamService {
   constructor(private readonly prisma: PrismaService) {}
-  async getTeams(tournamentId: string, search: string) {
+
+  async getTeams(query: GetTeamsAndPlayersQueryDto) {
+    const { tournamentId, search } = query;
+    const cleanSearch = search?.trim();
+
     const teams = await this.prisma.team.findMany({
       where: {
         tournaments: {
-          some: {
-            tournamentId,
-          },
+          some: { tournamentId },
         },
-        ...(search
-          ? {
-              name: {
-                contains: search,
-                mode: 'insensitive',
-              },
-            }
-          : {}),
+        ...(cleanSearch && {
+          name: {
+            contains: cleanSearch,
+            mode: 'insensitive',
+          },
+        }),
       },
       select: {
         id: true,
@@ -27,32 +28,29 @@ export class TeamService {
         logo: true,
       },
       take: 20,
-      orderBy: {
-        name: 'asc',
-      },
+      orderBy: { name: 'asc' },
     });
 
     return { data: teams };
   }
 
-  async getPlayers(tournamentId: string, search: string) {
+  async getPlayers(query: GetTeamsAndPlayersQueryDto) {
+    const { tournamentId, search } = query;
+    const cleanSearch = search?.trim();
+
     const players = await this.prisma.player.findMany({
       where: {
         team: {
           tournaments: {
-            some: {
-              tournamentId,
-            },
+            some: { tournamentId },
           },
         },
-        ...(search
-          ? {
-              name: {
-                contains: search,
-                mode: 'insensitive',
-              },
-            }
-          : {}),
+        ...(cleanSearch && {
+          name: {
+            contains: cleanSearch,
+            mode: 'insensitive',
+          },
+        }),
       },
       select: {
         id: true,
@@ -66,9 +64,7 @@ export class TeamService {
         },
       },
       take: 20,
-      orderBy: {
-        name: 'asc',
-      },
+      orderBy: { name: 'asc' },
     });
 
     return { data: players };

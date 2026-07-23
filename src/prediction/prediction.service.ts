@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MatchStatus, TournamentStatus } from '@prisma/client';
-import { PlaceBetDto } from './dto/place-bet.dto';
-import { PlaceBonusPredictionsDto } from './dto/place-bonus-predictions-dto';
 import { PredictionErrors } from './prediction.constants';
 import { LeaderboardService } from 'src/leaderboard/leaderboard.service';
+import { AddPredictionDto } from './dto/add-prediction.dto';
+import { AddBonusPredictionDto } from './dto/add-bonus-prediction-dto';
 
 @Injectable()
 export class PredictionService {
@@ -13,20 +13,17 @@ export class PredictionService {
     private readonly leaderboardService: LeaderboardService,
   ) {}
 
-  async getBets(userId: string, tournamentId: string, requesterId: string) {
-    const leaderboard = await this.leaderboardService.getRankedLeaderboard(tournamentId);
-
+  async getPredictions(userId: string, tournamentId: string, requesterId: string) {
     const tournament = await this.prisma.tournament.findUnique({
-      where: {
-        id: tournamentId,
-      },
+      where: { id: tournamentId },
     });
 
     if (!tournament) {
       throw new NotFoundException(PredictionErrors.TOURNAMENT_NOT_FOUND);
     }
 
-    const userStats = leaderboard.find((player) => player.userId === userId);
+    const leaderboard = await this.leaderboardService.getRankedLeaderboard(tournamentId);
+    const userStats = leaderboard?.data.find((player) => player.userId === userId);
 
     if (!userStats) {
       throw new NotFoundException(PredictionErrors.USER_NOT_FOUND);
@@ -38,7 +35,10 @@ export class PredictionService {
       this.prisma.bet.findMany({
         where: {
           userId,
-          match: { tournamentId, ...(!isMyBets && { status: MatchStatus.FINISHED }) },
+          match: {
+            tournamentId,
+            ...(!isMyBets && { status: MatchStatus.FINISHED }),
+          },
         },
         include: {
           match: {
@@ -51,14 +51,15 @@ export class PredictionService {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      this.getUserBonusPrediction(tournamentId, userId),
+      this.getBonusPredictions(userId, tournamentId),
     ]);
 
     let safeBonusPrediction = bonusPrediction;
-    const isSaveShowBonusPrediction =
-      !isMyBets && tournament?.status === TournamentStatus.UPCOMING && bonusPrediction;
 
-    if (isSaveShowBonusPrediction) {
+    const shouldHideBonusPrediction =
+      !isMyBets && tournament.status === TournamentStatus.UPCOMING && bonusPrediction;
+
+    if (shouldHideBonusPrediction) {
       safeBonusPrediction = {
         ...bonusPrediction,
         champion: null,
@@ -76,19 +77,18 @@ export class PredictionService {
     };
   }
 
-  async placeBet(userId: string, id: string, dto: PlaceBetDto) {
+  async addPrediction(userId: string, matchApiId: string, dto: AddPredictionDto) {
     const { homeScore, awayScore, predictedAdvancingTeamId } = dto;
 
     const match = await this.prisma.match.findUnique({
-      where: { apiMatchId: id },
+      where: { apiMatchId: matchApiId },
     });
 
     if (!match) {
       throw new NotFoundException(PredictionErrors.MATCH_NOT_FOUND);
     }
 
-    const currentTime = new Date();
-    if (match.status !== MatchStatus.SCHEDULED || currentTime >= new Date(match.startTime)) {
+    if (match.status !== MatchStatus.SCHEDULED || new Date() >= match.startTime) {
       throw new BadRequestException(PredictionErrors.BETTING_CLOSED);
     }
 
@@ -100,25 +100,21 @@ export class PredictionService {
       throw new BadRequestException(PredictionErrors.INVALID_ADVANCING_TEAM);
     }
 
-    const existingBet = await this.prisma.bet.findFirst({
-      where: { userId, matchId: id },
-    });
-
-    if (existingBet) {
-      return this.prisma.bet.update({
-        where: { id: existingBet.id },
-        data: {
-          homeScore,
-          awayScore,
-          predictedAdvancingTeamId,
+    return this.prisma.bet.upsert({
+      where: {
+        userId_matchId: {
+          userId,
+          matchId: match.id,
         },
-      });
-    }
-
-    return this.prisma.bet.create({
-      data: {
+      },
+      create: {
         userId,
-        matchId: id,
+        matchId: match.id,
+        homeScore,
+        awayScore,
+        predictedAdvancingTeamId,
+      },
+      update: {
         homeScore,
         awayScore,
         predictedAdvancingTeamId,
@@ -126,7 +122,7 @@ export class PredictionService {
     });
   }
 
-  public async getUserBonusPrediction(tournamentId: string, userId: string) {
+  public async getBonusPredictions(userId: string, tournamentId: string) {
     const prediction = await this.prisma.bonusPrediction.findUnique({
       where: {
         userId_tournamentId: {
@@ -144,37 +140,22 @@ export class PredictionService {
           },
         },
         championTeam: {
-          select: {
-            id: true,
-            name: true,
-            logo: true,
-          },
+          select: { id: true, name: true, logo: true },
         },
         runnerUpTeam: {
-          select: {
-            id: true,
-            name: true,
-            logo: true,
-          },
+          select: { id: true, name: true, logo: true },
         },
         topScorer: {
           select: {
             id: true,
             name: true,
-            team: {
-              select: {
-                name: true,
-                logo: true,
-              },
-            },
+            team: { select: { name: true, logo: true } },
           },
         },
       },
     });
 
-    if (!prediction) {
-      return null;
-    }
+    if (!prediction) return null;
 
     return {
       id: prediction.id,
@@ -205,8 +186,8 @@ export class PredictionService {
         ? {
             id: prediction.topScorer.id,
             name: prediction.topScorer.name,
-            teamName: prediction.topScorer.team?.name || null,
-            teamLogo: prediction.topScorer.team?.logo || null,
+            teamName: prediction.topScorer.team?.name ?? null,
+            teamLogo: prediction.topScorer.team?.logo ?? null,
             pointsWorth: prediction.tournament.topScorerWorth,
             pointsEarned: prediction.topScorerPoints,
           }
@@ -218,11 +199,9 @@ export class PredictionService {
     };
   }
 
-  async placeBonusPrediction(userId: string, dto: PlaceBonusPredictionsDto) {
+  async addBonusPrediction(userId: string, dto: AddBonusPredictionDto) {
     const tournament = await this.prisma.tournament.findUnique({
-      where: {
-        id: dto.tournamentId,
-      },
+      where: { id: dto.tournamentId },
       include: {
         teams: true,
         players: true,
@@ -275,15 +254,9 @@ export class PredictionService {
         topScorerId: dto.topScorerId,
       },
       update: {
-        ...(dto.championTeamId !== undefined && {
-          championTeamId: dto.championTeamId,
-        }),
-        ...(dto.runnerUpTeamId !== undefined && {
-          runnerUpTeamId: dto.runnerUpTeamId,
-        }),
-        ...(dto.topScorerId !== undefined && {
-          topScorerId: dto.topScorerId,
-        }),
+        ...(dto.championTeamId !== undefined && { championTeamId: dto.championTeamId }),
+        ...(dto.runnerUpTeamId !== undefined && { runnerUpTeamId: dto.runnerUpTeamId }),
+        ...(dto.topScorerId !== undefined && { topScorerId: dto.topScorerId }),
       },
     });
   }

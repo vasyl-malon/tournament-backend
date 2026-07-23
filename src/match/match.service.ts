@@ -1,45 +1,44 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { MatchStatus } from '@prisma/client';
+import { GetMatchesQueryDto } from './dto/get-matches-query.dto';
 
 @Injectable()
 export class MatchService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getAllMatches(
-    userId: string,
-    status: MatchStatus,
-    matchWeek: string,
-    tournamentId: string,
-    limit: string,
-  ) {
-    const filters = {
-      tournamentId,
-      ...(matchWeek && {
-        matchday: parseInt(matchWeek),
-      }),
-      ...(status && { status }),
-    };
-
-    if (!tournamentId) return { data: [] };
-
-    const takeLimit = limit ? parseInt(limit, 10) : undefined;
+  async getAll(userId: string, query: GetMatchesQueryDto) {
+    const { tournamentId, matchWeek, status, limit } = query;
 
     const matches = await this.prisma.match.findMany({
-      where: filters,
+      where: {
+        tournamentId,
+        ...(matchWeek && { matchday: matchWeek }),
+        ...(status && { status }),
+      },
       orderBy: { startTime: 'asc' },
-      take: takeLimit,
+      take: limit,
       include: {
-        awayTeam: {},
-        homeTeam: {},
+        awayTeam: true,
+        homeTeam: true,
         bets: {
           where: { userId },
+          select: {
+            id: true,
+            homeScore: true,
+            awayScore: true,
+            pointsEarned: true,
+          },
         },
       },
     });
 
+    const formattedMatches = matches.map(({ bets, ...match }) => ({
+      ...match,
+      userBet: bets[0] ?? null,
+    }));
+
     return {
-      data: matches,
+      data: formattedMatches,
     };
   }
 }
