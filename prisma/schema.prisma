@@ -62,12 +62,16 @@ model Invitation {
   token  String           @unique
   status InvitationStatus @default(PENDING)
 
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
   expiresAt DateTime
   usedAt    DateTime?
   revokedAt DateTime?
   createdAt DateTime  @default(now())
 
-  @@index([email, status])
+  @@unique([email, tournamentId])
+  @@index([token, tournamentId])
 }
 
 model Tournament {
@@ -98,6 +102,7 @@ model Tournament {
   topScorers       TopScorer[]
   teams            TournamentTeam[]
   players          TournamentPlayer[]
+  invitations      Invitation[]
 }
 
 model TournamentParticipant {

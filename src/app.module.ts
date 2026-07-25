@@ -13,6 +13,7 @@ import { PredictionModule } from './prediction/prediction.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
 import { TeamModule } from './team/team.module';
 import { JwtModule } from '@nestjs/jwt';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { JwtModule } from '@nestjs/jwt';
     PredictionModule,
     LeaderboardModule,
     TeamModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService],

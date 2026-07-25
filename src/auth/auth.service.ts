@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
-import { User, UserStatus } from '@prisma/client';
+import { InvitationStatus, User, UserStatus } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { MailService } from 'src/integrations/mail/mail.service';
 import { InviteUserDto } from './dto/invite-user';
@@ -22,56 +22,11 @@ export class AuthService {
     private mail: MailService,
   ) {}
 
-  generateInvitationToken(): string {
-    return randomBytes(32).toString('hex');
-  }
-
-  async sendInvitation(body: InviteUserDto) {
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: body.email },
-    });
-
-    if (existingUser) {
-      throw new BadRequestException(AuthErrors.USER_ALREADY_EXISTS);
-    }
-
-    const token = this.generateInvitationToken();
-
-    return this.prisma
-      .$transaction(async (tx) => {
-        const user = await tx.user.create({
-          data: {
-            email: body.email,
-            status: UserStatus.PENDING,
-          },
-        });
-
-        await tx.invitation.create({
-          data: {
-            email: body.email,
-            token,
-            expiresAt: new Date(Date.now() + INVITATION_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000),
-          },
-        });
-
-        return user;
-      })
-      .then(async (user) => {
-        try {
-          await this.mail.sendInvitation(body.email, token);
-        } catch (error) {
-          console.error('Failed to send email:', error);
-        }
-
-        return user;
-      });
-  }
-
   async register(dto: RegisterDto) {
     const invitation = await this.prisma.invitation.findFirst({
       where: {
         token: dto.token,
-        usedAt: null,
+        status: InvitationStatus.PENDING,
         expiresAt: { gt: new Date() },
       },
     });
@@ -87,27 +42,40 @@ export class AuthService {
     const passwordHash = await this.hashPassword(dto.password);
 
     const { user, token: jwtToken } = await this.prisma.$transaction(async (tx) => {
-      const updatedUser = await tx.user.update({
+      const updatedUser = await tx.user.upsert({
         where: { email: invitation.email },
-        data: {
+        create: {
+          email: invitation.email,
           passwordHash,
           firstName: dto.firstName,
           lastName: dto.lastName,
           status: UserStatus.ACTIVE,
         },
-        include: {
-          tournaments: {
-            orderBy: {
-              tournament: { createdAt: 'desc' },
-            },
-            take: 1,
+        update: {
+          passwordHash,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          status: UserStatus.ACTIVE,
+        },
+      });
+
+      await tx.tournamentParticipant.upsert({
+        where: {
+          tournamentId_userId: {
+            userId: updatedUser.id,
+            tournamentId: invitation.tournamentId,
           },
         },
+        create: {
+          userId: updatedUser.id,
+          tournamentId: invitation.tournamentId,
+        },
+        update: {},
       });
 
       await tx.invitation.update({
         where: { id: invitation.id },
-        data: { usedAt: new Date() },
+        data: { status: InvitationStatus.USED },
       });
 
       const token = await this.generateToken(updatedUser);
@@ -117,7 +85,8 @@ export class AuthService {
 
     return {
       token: jwtToken,
-      lastTournamentId: user.tournaments.length ? user.tournaments[0].tournamentId : null,
+      // 5. Повертаємо ID турніру напряму з інвайту
+      lastTournamentId: invitation.tournamentId,
       user: {
         email: user.email,
         id: user.id,

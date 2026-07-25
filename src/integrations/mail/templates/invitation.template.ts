@@ -45,7 +45,7 @@ export const InvitationTemplate = (token: string) => {
           <!-- EXPIRATION / WARNING NOTE -->
           <div style="background-color: #0f131a; padding: 16px; border-radius: 8px; border-left: 3px solid #f59e0b; margin-top: 28px;">
             <p style="font-size: 13px; color: #94a3b8; margin: 0; line-height: 1.5;">
-              <strong style="color: #fbbf24;">Please note:</strong> This invitation link is active for <strong style="color: #e2e8f0;">24 hours</strong>. If you weren't expecting this email, you can safely ignore it.
+              <strong style="color: #fbbf24;">Please note:</strong> This invitation link is active for <strong style="color: #e2e8f0;">7 days</strong>. If you weren't expecting this email, you can safely ignore it.
             </p>
           </div>
 
