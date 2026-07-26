@@ -355,7 +355,7 @@ export class FootballSyncService {
     }
   }
 
-  @Cron('*/5 * * * *')
+  // @Cron('*/5 * * * *')
   async handleMatchSync() {
     const tournaments = await this.prisma.tournament.findMany({
       where: { status: { in: ['UPCOMING', 'ONGOING'] } },
