@@ -104,12 +104,12 @@ export class PredictionService {
       where: {
         userId_matchId: {
           userId,
-          matchId: match.id,
+          matchId: matchApiId,
         },
       },
       create: {
         userId,
-        matchId: match.id,
+        matchId: matchApiId,
         homeScore,
         awayScore,
         predictedAdvancingTeamId,

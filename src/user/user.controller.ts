@@ -12,7 +12,10 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Get()
-  async getActiveUsers(@Query('query') query: string, @Query('tournamentId') tournamentId?: string) {
+  async getActiveUsers(
+    @Query('query') query: string,
+    @Query('tournamentId') tournamentId?: string,
+  ) {
     return this.userService.getActiveUsers(query, tournamentId);
   }
 }
