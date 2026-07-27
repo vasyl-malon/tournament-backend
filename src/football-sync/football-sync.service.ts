@@ -224,6 +224,11 @@ export class FootballSyncService {
 
           const transactionOperations: any[] = [];
 
+          let tieAdvancingTeamId: number | null = advancingTeamId;
+          if (isKnockout) {
+            tieAdvancingTeamId = await this.getAdvancingTeam(m, tournament.id);
+          }
+
           transactionOperations.push(
             this.prisma.match.update({
               where: { apiMatchId },
@@ -234,11 +239,39 @@ export class FootballSyncService {
                 homeScorePen,
                 awayScorePen,
                 duration,
-                advancingTeamId,
+                advancingTeamId: tieAdvancingTeamId,
                 startTime: new Date(m.utcDate),
               },
             }),
           );
+
+          let firstLegBetsMap = new Map<string, number | null>();
+          if (isKnockout) {
+            const firstLeg = await this.prisma.match.findFirst({
+              where: {
+                tournamentId: tournament.id,
+                stage: m.stage,
+                homeTeamId: m.awayTeam.id,
+                awayTeamId: m.homeTeam.id,
+              },
+              include: { bets: true },
+            });
+
+            if (firstLeg) {
+              for (const legBet of firstLeg.bets) {
+                firstLegBetsMap.set(legBet.userId, legBet.predictedAdvancingTeamId);
+              }
+
+              if (tieAdvancingTeamId && !firstLeg.advancingTeamId) {
+                transactionOperations.push(
+                  this.prisma.match.update({
+                    where: { id: firstLeg.id },
+                    data: { advancingTeamId: tieAdvancingTeamId },
+                  }),
+                );
+              }
+            }
+          }
 
           for (const bet of dbMatch.bets) {
             const points = this.calculatePoints(
@@ -248,8 +281,11 @@ export class FootballSyncService {
               awayScore ?? 0,
             );
 
+            const userPredictedAdvancingId =
+              firstLegBetsMap.get(bet.userId) ?? bet.predictedAdvancingTeamId;
+
             const advPoints =
-              advancingTeamId && bet.predictedAdvancingTeamId === advancingTeamId
+              tieAdvancingTeamId && userPredictedAdvancingId === tieAdvancingTeamId
                 ? WINNER_POINTS
                 : 0;
 
@@ -262,45 +298,6 @@ export class FootballSyncService {
                 },
               }),
             );
-          }
-
-          if (isKnockout) {
-            const tieAdvancingTeamId = await this.getAdvancingTeam(m, tournament.id);
-
-            if (tieAdvancingTeamId) {
-              const firstLeg = await this.prisma.match.findFirst({
-                where: {
-                  tournamentId: tournament.id,
-                  stage: m.stage,
-                  homeTeamId: m.awayTeam.id,
-                  awayTeamId: m.homeTeam.id,
-                },
-                include: { bets: true },
-              });
-
-              if (firstLeg) {
-                // Оновлюємо advancingTeamId для першого матчу
-                transactionOperations.push(
-                  this.prisma.match.update({
-                    where: { id: firstLeg.id },
-                    data: { advancingTeamId: tieAdvancingTeamId },
-                  }),
-                );
-
-                // Нараховуємо бали користувачам, які робили ставки на прохід у першому матчі
-                for (const firstLegBet of firstLeg.bets) {
-                  const advPoints =
-                    firstLegBet.predictedAdvancingTeamId === tieAdvancingTeamId ? WINNER_POINTS : 0;
-
-                  transactionOperations.push(
-                    this.prisma.bet.update({
-                      where: { id: firstLegBet.id },
-                      data: { advancingPointsEarned: advPoints },
-                    }),
-                  );
-                }
-              }
-            }
           }
 
           await this.prisma.$transaction(transactionOperations);

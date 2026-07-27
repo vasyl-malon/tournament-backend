@@ -27,6 +27,7 @@ export class MatchService {
             homeScore: true,
             awayScore: true,
             pointsEarned: true,
+            advancingPointsEarned: true,
             predictedAdvancingTeamId: true,
           },
         },

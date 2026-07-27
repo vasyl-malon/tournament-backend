@@ -7,7 +7,7 @@ import { TournamentStatus } from '@prisma/client';
 export class LeaderboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private calculateUserStats(bets: { pointsEarned: number }[]) {
+  private calculateUserStats(bets: { pointsEarned: number; advancingPointsEarned?: number }[]) {
     let totalPoints = 0;
     let exactCount = 0;
     let differenceCount = 0;
@@ -15,6 +15,7 @@ export class LeaderboardService {
 
     bets.forEach((bet) => {
       totalPoints += bet.pointsEarned;
+      if (bet.advancingPointsEarned) totalPoints += bet.advancingPointsEarned;
 
       if (bet.pointsEarned === PredictionPoints.EXACT) {
         exactCount++;
@@ -63,6 +64,7 @@ export class LeaderboardService {
           },
           select: {
             pointsEarned: true,
+            advancingPointsEarned: true,
           },
         },
         bonusPredictions: {
