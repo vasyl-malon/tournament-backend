@@ -264,32 +264,38 @@ export class FootballSyncService {
             );
           }
 
-          if (advancingTeamId) {
-            const firstLeg = await this.prisma.match.findFirst({
-              where: {
-                tournamentId: tournament.id,
-                stage: m.stage,
-                homeTeamId: m.awayTeam.id,
-                awayTeamId: m.homeTeam.id,
-                status: MatchStatus.FINISHED,
-              },
-              include: { bets: true },
-            });
+          if (isKnockout) {
+            const tieAdvancingTeamId = await this.getAdvancingTeam(m, tournament.id);
 
-            if (firstLeg && !firstLeg.advancingTeamId) {
-              transactionOperations.push(
-                this.prisma.match.update({
-                  where: { id: firstLeg.id },
-                  data: { advancingTeamId },
-                }),
-              );
+            if (tieAdvancingTeamId) {
+              const firstLeg = await this.prisma.match.findFirst({
+                where: {
+                  tournamentId: tournament.id,
+                  stage: m.stage,
+                  homeTeamId: m.awayTeam.id,
+                  awayTeamId: m.homeTeam.id,
+                },
+                include: { bets: true },
+              });
 
-              for (const firstLegBet of firstLeg.bets) {
-                if (firstLegBet.predictedAdvancingTeamId === advancingTeamId) {
+              if (firstLeg) {
+                // Оновлюємо advancingTeamId для першого матчу
+                transactionOperations.push(
+                  this.prisma.match.update({
+                    where: { id: firstLeg.id },
+                    data: { advancingTeamId: tieAdvancingTeamId },
+                  }),
+                );
+
+                // Нараховуємо бали користувачам, які робили ставки на прохід у першому матчі
+                for (const firstLegBet of firstLeg.bets) {
+                  const advPoints =
+                    firstLegBet.predictedAdvancingTeamId === tieAdvancingTeamId ? WINNER_POINTS : 0;
+
                   transactionOperations.push(
                     this.prisma.bet.update({
                       where: { id: firstLegBet.id },
-                      data: { advancingPointsEarned: 1 },
+                      data: { advancingPointsEarned: advPoints },
                     }),
                   );
                 }
@@ -317,7 +323,7 @@ export class FootballSyncService {
     this.logger.log(`Matches were updated for the tournament ${tournament.name}`);
   }
 
-  async manualSyncTournament(tournamentId: string) {
+  async manualSyncTeams(tournamentId: string) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
     });
@@ -328,6 +334,27 @@ export class FootballSyncService {
 
     try {
       await this.syncTournamentTeamsAndPlayers(tournament);
+
+      return {
+        success: true,
+        message: `Tournament "${tournament.name}" successfully synchronized`,
+      };
+    } catch (error) {
+      this.logger.error(`Manual sync failed for tournament ${tournament.name}`, error.message);
+      throw error;
+    }
+  }
+
+  async manualSyncMatches(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { id: tournamentId },
+    });
+
+    if (!tournament) {
+      throw new NotFoundException('Tournament not found');
+    }
+
+    try {
       await this.syncTournamentMatchesData(tournament);
 
       return {

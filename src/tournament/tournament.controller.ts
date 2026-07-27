@@ -8,6 +8,7 @@ import { UserRole } from '@prisma/client';
 import { AddParticipantDto } from './dto/add-participant-dto';
 import { CreateTournamentDto } from './dto/create-tournament-dto';
 import { InviteUserDto } from './dto/invite-user.dto';
+import { FinalizeTournamentDto } from './dto/finalize-tournament-dto';
 
 @Controller('tournaments')
 @UseGuards(AuthGuard)
@@ -48,5 +49,12 @@ export class TournamentController {
   @Get('/:id/participants-overview')
   async getParticipantsOverview(@Param('id') tournamentId: string) {
     return this.tournamentService.getTournamentParticipantsOverview(tournamentId);
+  }
+
+  @Post('/:id/finalize')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async finalizeTournament(@Param('id') tournamentId: string, @Body() dto: FinalizeTournamentDto) {
+    return this.tournamentService.finalizeTournament(tournamentId, dto);
   }
 }

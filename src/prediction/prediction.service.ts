@@ -123,6 +123,14 @@ export class PredictionService {
   }
 
   public async getBonusPredictions(userId: string, tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { id: tournamentId },
+    });
+
+    if (!tournament) {
+      throw new NotFoundException(PredictionErrors.TOURNAMENT_NOT_FOUND);
+    }
+
     const prediction = await this.prisma.bonusPrediction.findUnique({
       where: {
         userId_tournamentId: {

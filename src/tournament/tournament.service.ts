@@ -5,7 +5,8 @@ import { AddParticipantDto } from './dto/add-participant-dto';
 import { TournamentErrors } from './tournament.constants';
 import { randomBytes } from 'crypto';
 import { MailService } from 'src/integrations/mail/mail.service';
-import { InvitationStatus } from '@prisma/client';
+import { InvitationStatus, TournamentStatus } from '@prisma/client';
+import { FinalizeTournamentDto } from './dto/finalize-tournament-dto';
 
 @Injectable()
 export class TournamentService {
@@ -200,6 +201,61 @@ export class TournamentService {
         })),
         pendingInvitations,
       },
+    };
+  }
+
+  async finalizeTournament(tournamentId: string, dto: FinalizeTournamentDto) {
+    const tournament = await this.prisma.tournament.update({
+      where: { id: tournamentId },
+      data: {
+        status: TournamentStatus.FINISHED,
+        championTeamId: dto.championTeamId,
+        runnerUpTeamId: dto.runnerUpTeamId,
+        topScorerId: dto.topScorerId,
+      },
+    });
+
+    const bonusPredictions = await this.prisma.bonusPrediction.findMany({
+      where: { tournamentId },
+    });
+
+    const transactionOperations: any[] = [];
+
+    for (const prediction of bonusPredictions) {
+      const championPoints =
+        prediction.championTeamId === tournament.championTeamId
+          ? (tournament.championTeamWorth ?? 0)
+          : 0;
+
+          console.log(prediction.championTeamId === tournament.championTeamId)
+
+      const runnerUpPoints =
+        prediction.runnerUpTeamId === tournament.runnerUpTeamId
+          ? (tournament.runnerUpTeamWorth ?? 0)
+          : 0;
+
+      const topScorerPoints =
+        prediction.topScorerId === tournament.topScorerId ? (tournament.topScorerWorth ?? 0) : 0;
+
+      transactionOperations.push(
+        this.prisma.bonusPrediction.update({
+          where: { id: prediction.id },
+          data: {
+            championTeamPoints: championPoints,
+            runnerUpTeamPoints: runnerUpPoints,
+            topScorerPoints: topScorerPoints,
+          },
+        }),
+      );
+    }
+
+    if (transactionOperations.length > 0) {
+      await this.prisma.$transaction(transactionOperations);
+    }
+
+    return {
+      success: true,
+      message: `Tournament "${tournament.name}" finalized successfully. Updated ${bonusPredictions.length} bonus predictions.`,
     };
   }
 }

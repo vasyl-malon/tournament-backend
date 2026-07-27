@@ -4,14 +4,20 @@ import { AuthGuard } from 'src/guards';
 import { Roles } from 'src/decorators';
 import { UserRole } from '@prisma/client';
 
-@Controller('football-api')
+@Controller('tournaments')
 @UseGuards(AuthGuard)
-export class TournamentsController {
+export class FootballSyncController {
   constructor(private readonly footballSyncService: FootballSyncService) {}
 
-  @Post('/:id/sync')
+  @Post('/:id/teams/sync')
   @Roles(UserRole.ADMIN)
-  async syncTournamentData(@Param('id') tournamentId: string) {
-    return this.footballSyncService.manualSyncTournament(tournamentId);
+  async syncTournamentTeams(@Param('id') tournamentId: string) {
+    return this.footballSyncService.manualSyncTeams(tournamentId);
+  }
+
+  @Post('/:id/matches/sync')
+  @Roles(UserRole.ADMIN)
+  async syncTournamentMatches(@Param('id') tournamentId: string) {
+    return this.footballSyncService.manualSyncMatches(tournamentId);
   }
 }
